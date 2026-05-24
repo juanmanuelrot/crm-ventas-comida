@@ -1,6 +1,17 @@
 name: crm-ventas-comida
 region: nyc
 
+databases:
+  - name: db
+    engine: PG
+    version: "16"
+    production: true
+    cluster_name: crm-ventas-comida-db
+    db_name: brunoweb
+    db_user: brunoweb
+    size: db-s-1vcpu-1gb
+    num_nodes: 1
+
 services:
   - name: web
     github:
@@ -19,7 +30,7 @@ services:
         value: production
       - key: DATABASE_URL
         scope: RUN_AND_BUILD_TIME
-        type: SECRET
+        value: ${db.DATABASE_URL}
       - key: AUTH_SECRET
         scope: RUN_AND_BUILD_TIME
         type: SECRET
@@ -54,4 +65,4 @@ jobs:
     envs:
       - key: DATABASE_URL
         scope: RUN_AND_BUILD_TIME
-        type: SECRET
+        value: ${db.DATABASE_URL}

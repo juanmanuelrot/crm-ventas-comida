@@ -25,15 +25,18 @@ ADMIN_NAME=Bruno
 TIMEZONE=America/Montevideo
 ```
 
-**Opciones para `DATABASE_URL`:**
+**Opciones para `DATABASE_URL` en dev local:**
 
-- **Neon (recomendado, free tier permanente)**: crear un proyecto en [neon.tech](https://neon.tech) y copiar la connection string.
-- **Supabase**: crear proyecto, ir a *Settings → Database → Connection string (Direct)*.
-- **Prisma Postgres temporal (solo para probar)**:
+- **Postgres local con Docker**:
+  ```bash
+  docker run --name brunoweb-pg -e POSTGRES_PASSWORD=dev -p 5432:5432 -d postgres:16
+  # DATABASE_URL=postgresql://postgres:dev@localhost:5432/postgres
+  ```
+- **Prisma Postgres temporal (24h, sin setup)**:
   ```bash
   npx create-db create --ttl 24h --env .env.local
   ```
-  La base expira en 24h, no usar en producción.
+- **Apuntar al DO Managed Postgres de prod** (cuidado: estás en la DB real). Copiar el connection string desde el dashboard de DO.
 
 ### 2. Instalar, migrar, seedear
 
@@ -61,52 +64,68 @@ Login con `bruno@prueba.com` / `prueba1234`.
 
 ## Deploy en DigitalOcean Apps
 
-El archivo [`.do/app.yaml`](./.do/app.yaml) contiene el spec de DO App Platform. Define:
+El archivo [`.do/app.yaml`](./.do/app.yaml) contiene el spec de DO App Platform. Define **tres componentes** que DO crea juntos al primer deploy:
 
-- **Servicio `web`**: corre `npm run build` y `npm start`. Lee `PORT` del entorno DO.
-- **Job `migrate-db`** (pre-deploy): corre `prisma migrate deploy` antes de cada deploy.
+| Componente | Qué hace |
+|---|---|
+| `databases.db` | **Postgres administrado de DigitalOcean** (cluster `crm-ventas-comida-db`, basic 1 vCPU / 1 GB, Postgres 16). DO inyecta `${db.DATABASE_URL}` en la app y el job. |
+| `services.web` | App Next.js. Build: `npm run build`. Run: `npm start`. Auto-deploy en cada push a `main`. |
+| `jobs.migrate-db` | Job pre-deploy que corre `prisma migrate deploy` antes de que arranque `web`. |
 
 ### Setup paso a paso
 
-1. **Crear una base de datos Postgres** (Neon free tier).
-   - Crear proyecto en [neon.tech](https://neon.tech).
-   - Copiar el connection string (con `sslmode=require`).
+1. **Conectar el repo a DigitalOcean Apps**:
+   - [cloud.digitalocean.com/apps](https://cloud.digitalocean.com/apps) → "Create App" → GitHub → seleccionar `juanmanuelrot/crm-ventas-comida`, branch `main`.
+   - DO detecta el `.do/app.yaml` automáticamente. Si no aparece, elegí "Import App Spec from Source" apuntando a ese archivo.
+   - El wizard te muestra: 1 servicio (web), 1 job (migrate-db) y 1 base de datos (db). Confirmá.
 
-2. **Conectar el repo a DigitalOcean Apps**.
-   - Ir a [cloud.digitalocean.com/apps](https://cloud.digitalocean.com/apps).
-   - "Create App" → GitHub → seleccionar `juanmanuelrot/crm-ventas-comida`, branch `main`.
-   - DO detecta el `.do/app.yaml` automáticamente. Si no, elegí "Import App Spec from Source" y apuntá a ese archivo.
-
-3. **Configurar las variables de entorno** (en el dashboard de DO, sección *Settings → App-Level Environment Variables*):
-   - `DATABASE_URL` — connection string de Neon
+2. **Setear las variables marcadas como SECRET** (en *Settings → App-Level Environment Variables*):
    - `AUTH_SECRET` — generar con `openssl rand -hex 32`
-   - `ADMIN_PASSWORD` — password del admin
-   - Las demás (`ADMIN_EMAIL`, `ADMIN_NAME`, `TIMEZONE`, `AUTH_TRUST_HOST`) ya vienen seteadas en el spec.
+   - `ADMIN_PASSWORD` — la contraseña que querés para el admin inicial
 
-   Las que tienen `type: SECRET` se setean en el dashboard de DO y se guardan cifradas.
+   Las demás (`DATABASE_URL`, `ADMIN_EMAIL`, `ADMIN_NAME`, `TIMEZONE`, `AUTH_TRUST_HOST`) ya vienen seteadas en el spec. `DATABASE_URL` se resuelve automáticamente al connection string del cluster que DO provisiona.
 
-4. **Deploy**: DO arranca el primer deploy. El job `migrate-db` corre primero (aplica las migraciones), después el servicio `web`.
+3. **Primer deploy**: DO crea el cluster Postgres, después corre el job `migrate-db` (aplica las migraciones), después arranca `web`. Toma unos minutos la primera vez (el cluster tarda en aprovisionarse).
 
-5. **Seedear el admin** (solo la primera vez):
-   - Ir al panel de DO → tu app → *Console* (consola del servicio web).
+4. **Seedear el admin** (solo la primera vez):
+   - Panel de DO → tu app → servicio `web` → *Console*.
    - Correr: `npm run db:seed`
-   - Esto crea el usuario admin con el `ADMIN_EMAIL`/`ADMIN_PASSWORD` que configuraste.
-   - Alternativamente, podés correr el seed localmente apuntando al `DATABASE_URL` de producción.
+   - Crea el usuario admin con `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
+   - Re-correrlo es inocuo: el seed usa `upsert`.
 
-6. **Listo**: la app queda disponible en la URL que DO te asigna (algo tipo `https://crm-ventas-comida-xxxx.ondigitalocean.app`).
+5. **Listo**: la app queda en `https://crm-ventas-comida-xxxxx.ondigitalocean.app`. Login con `bruno@prueba.com` / la `ADMIN_PASSWORD` que pusiste.
+
+### Conectarse a la base directamente
+
+Para correr queries o `prisma studio` apuntando al Postgres de prod:
+
+- DO te muestra el connection string en *Databases → crm-ventas-comida-db → Connection Details*.
+- Copialo a `.env.local` y corré `npm run db:studio`.
+- ⚠️ Es la DB real, cuidado con DELETE/UPDATE.
 
 ### Notas de deploy
 
-- **`postinstall: prisma generate`** genera el cliente Prisma automáticamente después de cada `npm install`, tanto local como en DO.
+- **`postinstall: prisma generate`** regenera el cliente Prisma después de cada `npm install`, tanto local como en DO.
 - **`AUTH_TRUST_HOST=true`** está hardcodeado en el spec porque Auth.js necesita confiar en el header `Host` cuando corre detrás del proxy de DO.
 - **JWT sessions**: la sesión vive en una cookie firmada con `AUTH_SECRET`. No requiere tabla en la DB.
-- **Migraciones**: cada `git push` a `main` dispara un nuevo deploy. El job `migrate-db` aplica las migraciones pendientes antes de que el servicio web reciba tráfico.
-- **Re-seeding**: el seed usa `upsert`, no rompe nada si lo corrés varias veces.
+- **Migraciones**: cada `git push` a `main` dispara un nuevo deploy. El job `migrate-db` aplica las migraciones pendientes antes de que el servicio web reciba tráfico (zero-downtime para migrations aditivas).
 - **Custom domain**: lo configurás desde el dashboard de DO (*Settings → Domains*).
 
-### Tamaño/costo
+### Costo aproximado (mayo 2026)
 
-Con `basic-xxs` (512 MB RAM, 1 vCPU compartida) la app corre cómoda para uso de un negocio chico. La base en Neon free tier alcanza para varios miles de visitas.
+- App service (`basic-xxs`): ~$5/mes (512 MB RAM, 1 vCPU compartida).
+- Postgres (`db-s-1vcpu-1gb`): ~$15/mes (1 GB RAM, 10 GB SSD, backups diarios).
+- Total: **~$20/mes**.
+
+Si querés bajar costos para empezar, en `.do/app.yaml` cambiá la sección `databases` a:
+
+```yaml
+databases:
+  - name: db
+    engine: PG
+    version: "16"
+    production: false      # dev database tier, ~$7/mes, sin backups automáticos
+```
 
 ## Estructura de carpetas
 
