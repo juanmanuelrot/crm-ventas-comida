@@ -11,8 +11,17 @@ if (!connectionString) {
   throw new Error("DATABASE_URL is required.");
 }
 
+function buildSsl(cs: string) {
+  const needsSsl = /sslmode=(require|verify-ca|verify-full|prefer)/.test(cs);
+  if (!needsSsl) return undefined;
+  if (process.env.DATABASE_CA_CERT) {
+    return { ca: process.env.DATABASE_CA_CERT, rejectUnauthorized: true };
+  }
+  return { rejectUnauthorized: false };
+}
+
 const prisma = new PrismaClient({
-  adapter: new PrismaPg({ connectionString }),
+  adapter: new PrismaPg({ connectionString, ssl: buildSsl(connectionString) }),
 });
 
 async function main() {
