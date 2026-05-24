@@ -1,7 +1,5 @@
-import Link from "next/link";
 import { auth } from "@/lib/auth";
-import { LogoutButton } from "@/components/logout-button";
-import { AppNav } from "@/components/app-nav";
+import { AppShell } from "@/components/app-shell";
 
 export async function AppHeader() {
   const session = await auth();
@@ -23,25 +21,11 @@ export async function AppHeader() {
       ];
 
   return (
-    <header className="sticky top-0 z-30 border-b border-zinc-200/70 bg-white/85 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
-        <Link
-          href={isAdmin ? "/admin" : "/dashboard"}
-          className="font-display text-lg font-semibold tracking-tight"
-        >
-          Bruno<span className="text-[oklch(0.74_0.16_56)]">Web</span>
-        </Link>
-        <AppNav links={links} />
-        <div className="flex items-center gap-3">
-          <div className="hidden text-right sm:block">
-            <div className="text-sm font-medium leading-tight">{user.name}</div>
-            <div className="text-xs uppercase tracking-wider text-zinc-400">
-              {isAdmin ? "Admin" : "Vendedor"}
-            </div>
-          </div>
-          <LogoutButton />
-        </div>
-      </div>
-    </header>
+    <AppShell
+      user={{ name: user.name ?? "" }}
+      links={links}
+      homeHref={isAdmin ? "/admin" : "/dashboard"}
+      roleLabel={isAdmin ? "Admin" : "Vendedor"}
+    />
   );
 }

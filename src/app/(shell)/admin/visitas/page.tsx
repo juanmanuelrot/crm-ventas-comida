@@ -14,6 +14,7 @@ import { prisma } from "@/lib/db";
 import { formatInTz } from "@/lib/tz";
 import { ScoreBadge } from "@/components/score-badge";
 import { ResultadoBadge, StatusBadge } from "@/components/status-badge";
+import { VisitCard } from "@/components/visit-card";
 
 const STATUS_FILTERS = ["TODOS", "PENDIENTE", "REALIZADA", "CANCELADA"] as const;
 
@@ -27,9 +28,10 @@ export default async function AdminVisitasPage({
   if (session.user.role !== "ADMIN") redirect("/dashboard");
 
   const sp = await searchParams;
-  const status = sp.status && STATUS_FILTERS.includes(sp.status as typeof STATUS_FILTERS[number])
-    ? sp.status
-    : "TODOS";
+  const status =
+    sp.status && STATUS_FILTERS.includes(sp.status as (typeof STATUS_FILTERS)[number])
+      ? sp.status
+      : "TODOS";
   const vendorId = sp.vendorId || "TODOS";
 
   const where: Record<string, unknown> = { deletedAt: null };
@@ -59,6 +61,13 @@ export default async function AdminVisitasPage({
     return `/admin/visitas${qs ? `?${qs}` : ""}`;
   }
 
+  const pillClass = (active: boolean) =>
+    `rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+      active
+        ? "border-zinc-900 bg-zinc-900 text-white"
+        : "border-zinc-200 bg-white text-zinc-600 active:border-zinc-300 hover:border-zinc-300"
+    }`;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -68,110 +77,117 @@ export default async function AdminVisitasPage({
             Mostrando hasta 100 visitas más recientes.
           </p>
         </div>
-        <Link href="/admin/visitas/new" className={buttonVariants()}>
+        <Link href="/admin/visitas/new" className={`${buttonVariants()} w-full sm:w-auto`}>
           + Nueva visita
         </Link>
       </div>
 
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-center gap-2 text-sm">
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">
             Estado
           </span>
           {STATUS_FILTERS.map((s) => (
-            <Link
-              key={s}
-              href={urlFor({ status: s })}
-              className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                status === s
-                  ? "border-zinc-900 bg-zinc-900 text-white"
-                  : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300"
-              }`}
-            >
+            <Link key={s} href={urlFor({ status: s })} className={pillClass(status === s)}>
               {s === "TODOS" ? "Todos" : s[0] + s.slice(1).toLowerCase()}
             </Link>
           ))}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 text-sm">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">
             Vendedor
           </span>
-          <Link
-            href={urlFor({ vendorId: "TODOS" })}
-            className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-              vendorId === "TODOS"
-                ? "border-zinc-900 bg-zinc-900 text-white"
-                : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300"
-            }`}
-          >
+          <Link href={urlFor({ vendorId: "TODOS" })} className={pillClass(vendorId === "TODOS")}>
             Todos
           </Link>
           {vendors.map((v) => (
-            <Link
-              key={v.id}
-              href={urlFor({ vendorId: v.id })}
-              className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                vendorId === v.id
-                  ? "border-zinc-900 bg-zinc-900 text-white"
-                  : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300"
-              }`}
-            >
+            <Link key={v.id} href={urlFor({ vendorId: v.id })} className={pillClass(vendorId === v.id)}>
               {v.name}
             </Link>
           ))}
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Fecha</TableHead>
-              <TableHead>Empresa</TableHead>
-              <TableHead>Vendedor</TableHead>
-              <TableHead>Zona</TableHead>
-              <TableHead>Score</TableHead>
-              <TableHead>Estado</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {visits.length === 0 ? (
+      {/* Mobile: card list */}
+      <div className="space-y-2 md:hidden">
+        {visits.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-zinc-200 bg-white p-6 text-center text-sm text-zinc-500">
+            No hay visitas con esos filtros.
+          </p>
+        ) : (
+          visits.map((v) => (
+            <VisitCard
+              key={v.id}
+              visit={{
+                id: v.id,
+                empresa: v.empresa,
+                contacto: v.contacto,
+                zona: v.zona,
+                scheduledAt: v.scheduledAt,
+                score: v.score,
+                status: v.status,
+                resultadoVenta: v.resultadoVenta,
+                vendorName: v.vendor.name,
+              }}
+              href={`/admin/visitas/${v.id}`}
+            />
+          ))
+        )}
+      </div>
+
+      {/* Desktop: table */}
+      <div className="hidden overflow-hidden rounded-xl border border-zinc-200 bg-white md:block">
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-zinc-500">
-                  No hay visitas con esos filtros.
-                </TableCell>
+                <TableHead>Fecha</TableHead>
+                <TableHead>Empresa</TableHead>
+                <TableHead>Vendedor</TableHead>
+                <TableHead>Zona</TableHead>
+                <TableHead>Score</TableHead>
+                <TableHead>Estado</TableHead>
               </TableRow>
-            ) : (
-              visits.map((v) => (
-                <TableRow key={v.id} className="cursor-pointer">
-                  <TableCell>
-                    <Link href={`/admin/visitas/${v.id}`} className="block">
-                      {formatInTz(v.scheduledAt, "d MMM HH:mm")}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <Link href={`/admin/visitas/${v.id}`} className="block">
-                      <div className="font-medium">{v.empresa}</div>
-                      <div className="text-xs text-zinc-500">{v.contacto}</div>
-                    </Link>
-                  </TableCell>
-                  <TableCell>{v.vendor.name}</TableCell>
-                  <TableCell>{v.zona}</TableCell>
-                  <TableCell>
-                    <ScoreBadge score={v.score} />
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      <StatusBadge status={v.status} />
-                      <ResultadoBadge resultado={v.resultadoVenta} />
-                    </div>
+            </TableHeader>
+            <TableBody>
+              {visits.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-zinc-500">
+                    No hay visitas con esos filtros.
                   </TableCell>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+              ) : (
+                visits.map((v) => (
+                  <TableRow key={v.id} className="cursor-pointer">
+                    <TableCell>
+                      <Link href={`/admin/visitas/${v.id}`} className="block whitespace-nowrap">
+                        {formatInTz(v.scheduledAt, "d MMM HH:mm")}
+                      </Link>
+                    </TableCell>
+                    <TableCell>
+                      <Link href={`/admin/visitas/${v.id}`} className="block">
+                        <div className="font-medium">{v.empresa}</div>
+                        <div className="text-xs text-zinc-500">{v.contacto}</div>
+                      </Link>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">{v.vendor.name}</TableCell>
+                    <TableCell className="whitespace-nowrap">{v.zona}</TableCell>
+                    <TableCell>
+                      <ScoreBadge score={v.score} />
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        <StatusBadge status={v.status} />
+                        <ResultadoBadge resultado={v.resultadoVenta} />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
       </div>
     </div>
   );
