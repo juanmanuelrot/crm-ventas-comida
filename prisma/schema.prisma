@@ -1,0 +1,104 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  VENDEDOR
+}
+
+enum VisitStatus {
+  PENDIENTE
+  REALIZADA
+  CANCELADA
+}
+
+enum ResultadoVenta {
+  VENDIDA
+  NO_VENDIDA
+  SEGUIMIENTO
+}
+
+enum InviteType {
+  INVITE
+  PASSWORD_RESET
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         Role
+  disabled     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  visits       Visit[]     @relation("VendorVisits")
+  editedVisits Visit[]     @relation("LastEditedBy")
+  notes        VisitNote[]
+  invitesSent  Invite[]    @relation("InvitedBy")
+}
+
+model Invite {
+  id          String      @id @default(cuid())
+  tokenHash   String      @unique
+  type        InviteType  @default(INVITE)
+  name        String?
+  email       String?
+  invitedBy   User        @relation("InvitedBy", fields: [invitedById], references: [id])
+  invitedById String
+  createdAt   DateTime    @default(now())
+  expiresAt   DateTime
+  usedAt      DateTime?
+
+  @@index([invitedById])
+}
+
+model Visit {
+  id              String           @id @default(cuid())
+  vendor          User             @relation("VendorVisits", fields: [vendorId], references: [id])
+  vendorId        String
+  empresa         String
+  contacto        String
+  zona            String
+  scheduledAt     DateTime
+  potencial       Int
+  interes         Int
+  facilidad       Int
+  score           Int
+  notasIniciales  String
+  status          VisitStatus      @default(PENDIENTE)
+  resultadoVenta  ResultadoVenta?
+  montoEstimado   Decimal?
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+  lastEditedBy    User?            @relation("LastEditedBy", fields: [lastEditedById], references: [id])
+  lastEditedById  String?
+  deletedAt       DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  notes           VisitNote[]
+
+  @@index([vendorId, scheduledAt])
+  @@index([status])
+  @@index([vendorId, status])
+  @@index([deletedAt])
+}
+
+model VisitNote {
+  id        String   @id @default(cuid())
+  visit     Visit    @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  visitId   String
+  author    User     @relation(fields: [authorId], references: [id])
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([visitId, createdAt])
+}

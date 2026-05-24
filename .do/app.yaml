@@ -1,0 +1,57 @@
+name: crm-ventas-comida
+region: nyc
+
+services:
+  - name: web
+    github:
+      repo: juanmanuelrot/crm-ventas-comida
+      branch: main
+      deploy_on_push: true
+    source_dir: /
+    environment_slug: node-js
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    build_command: npm run build
+    run_command: npm start
+    envs:
+      - key: NODE_ENV
+        scope: RUN_AND_BUILD_TIME
+        value: production
+      - key: DATABASE_URL
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+      - key: AUTH_SECRET
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+      - key: AUTH_TRUST_HOST
+        scope: RUN_AND_BUILD_TIME
+        value: "true"
+      - key: ADMIN_EMAIL
+        scope: RUN_AND_BUILD_TIME
+        value: bruno@prueba.com
+      - key: ADMIN_PASSWORD
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+      - key: ADMIN_NAME
+        scope: RUN_AND_BUILD_TIME
+        value: Bruno
+      - key: TIMEZONE
+        scope: RUN_AND_BUILD_TIME
+        value: America/Montevideo
+
+jobs:
+  - name: migrate-db
+    kind: PRE_DEPLOY
+    github:
+      repo: juanmanuelrot/crm-ventas-comida
+      branch: main
+    source_dir: /
+    environment_slug: node-js
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    build_command: npm install --include=dev
+    run_command: npx prisma migrate deploy
+    envs:
+      - key: DATABASE_URL
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
