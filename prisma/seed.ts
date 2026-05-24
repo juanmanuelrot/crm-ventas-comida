@@ -11,17 +11,31 @@ if (!connectionString) {
   throw new Error("DATABASE_URL is required.");
 }
 
-function buildSsl(cs: string) {
-  const needsSsl = /sslmode=(require|verify-ca|verify-full|prefer)/.test(cs);
-  if (!needsSsl) return undefined;
+const PERMISSIVE_SSL_MODES = new Set(["require", "verify-ca", "verify-full", "prefer"]);
+
+function buildAdapterConfig(raw: string) {
   if (process.env.DATABASE_CA_CERT) {
-    return { ca: process.env.DATABASE_CA_CERT, rejectUnauthorized: true };
+    const url = new URL(raw);
+    url.searchParams.delete("sslmode");
+    return {
+      connectionString: url.toString(),
+      ssl: { ca: process.env.DATABASE_CA_CERT, rejectUnauthorized: true },
+    };
   }
-  return { rejectUnauthorized: false };
+  try {
+    const url = new URL(raw);
+    const sslmode = url.searchParams.get("sslmode");
+    if (sslmode && PERMISSIVE_SSL_MODES.has(sslmode)) {
+      url.searchParams.set("sslmode", "no-verify");
+    }
+    return { connectionString: url.toString() };
+  } catch {
+    return { connectionString: raw };
+  }
 }
 
 const prisma = new PrismaClient({
-  adapter: new PrismaPg({ connectionString, ssl: buildSsl(connectionString) }),
+  adapter: new PrismaPg(buildAdapterConfig(connectionString)),
 });
 
 async function main() {
